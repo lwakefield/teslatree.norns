@@ -12,70 +12,57 @@ function unrequire(name)
 end
 unrequire("musicutil")
 
-local TreeusicUtil = require "musicutil"
+local MusicUtil = require "musicutil"
 local TabUtil   = require "tabutil"
 local Tree      = include "lib/tree"
 
-local SCALES_LEN = #TreeusicUtil.SCALES
-local CHORDS_LEN = #TreeusicUtil.CHORDS
-
 local alt = false
-params:add_number("seed", "seed", 0, math.maxinteger, 0)
-local amp = 0.5
-local tempo = 60
-local scl_idx = 1
-local seq_len = 8
-local root = 60
 local seqs = {}
 local should_walk = true
 local seq_walk
-local bch   = 1
-local loops_per_bch = 2
 local loop_num = 1
 local seq_pos = 0
-local range = 3
-local num_bch = 7
-local num_mut = 2
 local page = 1
 
 engine.name = "PolyPerc"
 
 local function loop()
   while true do
-    clock.sync(60 / tempo / 4)
+    clock.sync(1 / params:get("div"))
     seq_pos = seq_pos + 1
-    if seq_pos > seq_len then
+    if seq_pos > params:get("seqlen") then
       seq_pos = 1
-      if should_walk then loop_num = loop_num + 1 end
+      if params:get("walk") then loop_num = loop_num + 1 end
     end
-    if loop_num > loops_per_bch then
-      bch = seq_walk()
+    if loop_num > params:get("loops") then
+      params:set("bch", seq_walk(), true)
       loop_num = 1
     end
-    -- seq_pos = util.wrap(seq_pos + 1, 1, seq_len)
-    engine.hz(TreeusicUtil.note_num_to_freq(seqs[bch][seq_pos]))
+    engine.hz(MusicUtil.note_num_to_freq(seqs[params:get("bch")][seq_pos]))
     redraw()
   end
 end
 
 local function gen_seqs()
   math.randomseed(params:get("seed"))
-  scale = TreeusicUtil.generate_scale(24 + root % 12, TreeusicUtil.SCALES[scl_idx].name, 8)
+  root = params:get("root")
+  scale = MusicUtil.generate_scale(24 + root % 12, params:string("scale"), 8)
+  range = params:get("range")
   root_idx = TabUtil.key(scale, root)
 
   seq = { root }
-  for i = 2, seq_len do
+  for i = 2, params:get("seqlen") do
     last_idx = TabUtil.key(scale, seq[#seq])
     offset = util.round(math.random() * 2 * range - range)
     seq[#seq+1] = scale[last_idx+offset]
   end
 
-  seqs = Tree.mktree(num_bch, function (i, t)
+  seqs = Tree.mktree(params:get("bchs"), function (i, t)
     if i == 1 then
       return seq
     else
       mut_seq = {table.unpack(t[Tree.parent(i)])}
-      for i = 1, num_mut do
+      for i = 1, params:get("muts") do
         mut_idx = util.round(util.linlin(0, 1, 1, #mut_seq, math.random()))
         offset = util.round(math.random() * 2 * range - range)
         scale_idx = TabUtil.key(scale, mut_seq[mut_idx])
@@ -86,17 +73,80 @@ local function gen_seqs()
   end)
 
   seq_walk = Tree.walker(#seqs)
-  bch = seq_walk()
+  params:set("bch", seq_walk())
 end
 
 function init()
-  engine.amp(amp)
+  engine.amp(1.0)
   engine.cutoff(500)
   engine.release(0.5)
 
+  params:add{
+    type="number", id="scale", name="scale",
+    min=1, max=#MusicUtil.SCALES, default=1,
+    action=gen_seqs,
+    formatter=function (p) 
+      return MusicUtil.SCALES[p:get()].name
+    end
+  }
+  params:add{
+    type="number", id="seed", name="seed",
+    min=0, max=math.maxinteger, default=0,
+    action=gen_seqs
+  }
+  params:add{
+    type="number", id="root", name="root",
+    min=24, max=128, default=60,
+    action=gen_seqs,
+    formatter=function (p) 
+      return MusicUtil.note_num_to_name(p:get(), true)
+    end
+  }
+
+  params:add{
+    type="number", id="seqlen", name="seqlen",
+    min=1, max=16, default=8,
+    action=gen_seqs
+  }
+  params:add{
+    type="number", id="range", name="range",
+    min=0, max=8, default=3,
+    action=gen_seqs
+  }
+
+  params:add{
+    type="number", id="bch", name="bch",
+    min=1, max=128, default=4,
+    action=gen_seqs -- need to set the max to bchs
+  }
+  params:add{
+    type="number", id="muts", name="muts",
+    min=1, max=16, default=2,
+    action=gen_seqs
+  }
+  params:add{
+    type="number", id="bchs", name="bchs",
+    min=1, max=255, default=7,
+    action=gen_seqs
+  }
+
+  params:add{
+    type="number", id="loops", name="loops",
+    min=1, max=255, default=2,
+    action=gen_seqs
+  }
+  params:add{
+    type="binary", id="walk", name="walk", behavior="toggle",
+    default=1,
+    action=gen_seqs
+  }
+  params:add{
+    type="number", id="div", name="div",
+    min=1, max=128, default=4
+  }
+
   gen_seqs()
-  clock_id = clock.run(loop)
-  
+  clock.run(loop)
 end
 
 function key(n,z)
@@ -111,36 +161,36 @@ end
 function enc(n,d)
   if page == 1 then
     if alt==false and n == 1 then
-      scl_idx = util.clamp(scl_idx + d, 1, #TreeusicUtil.SCALES)
+      params:delta("scale", d)
     elseif alt==false and n==2 then
       params:delta("seed", d)
     elseif alt==true and n==2 then
-      seq_len = util.clamp(seq_len + d, 1, 16)
+      params:delta("seqlen", d)
     elseif alt==false and n == 3 then
-      root = util.clamp(root + d, 24, 108)
+      params:delta("root", d)
     elseif alt==true and n==3 then
-      range = util.clamp(range + d, 1, 8)
+      params:delta("range", d)
     end
   elseif page == 2 then
     if alt==false and n == 1 then
-      if should_walk == false then
-        bch = util.clamp(bch + d, 1, #seqs)
+      if params:get("walk") == false then
+        params:delta("bch", d)
       end
     elseif alt==true and n == 1 then
-      loops_per_bch = util.clamp(loops_per_bch + d, 1, 32)
+      params:delta("loops", d)
     elseif alt==false and n == 2 then
-      num_muts = util.clamp(num_muts + d, 1, 32)
+      params:delta("muts", d)
     elseif alt==true and n == 2 then
-      should_walk = d == 1
+      params:set("walk", d)
     elseif alt==false and n == 3 then
-      num_bch = util.clamp(num_bch + d, 1, 255)
+      params:delta("bchs", d)
     elseif alt==true and n == 3 then
-      tempo = util.clamp(tempo + d, 1, 1024)
+      params:delta("div", d)
+      -- tempo = util.clamp(tempo + d, 1, 1024)
     elseif false then
     end
   end
 
-  gen_seqs()
   redraw()
 end
 
@@ -152,44 +202,44 @@ function redraw()
     if alt == false then screen.level(15) else screen.level(1) end
 
     screen.move(10,10)
-    screen.text("scale: " .. TreeusicUtil.SCALES[scl_idx].name)
+    screen.text("scale: " .. params:string("scale"))
     screen.move(10,20)
     screen.text("seed: " .. params:get("seed"))
     screen.move(10,30)
-    screen.text("root: " .. TreeusicUtil.note_num_to_name(root, true))
+    screen.text("root: " .. MusicUtil.note_num_to_name(params:get("root"), true))
 
     if alt == true then screen.level(15) else screen.level(1) end
 
     -- screen.move(75,10)
     -- screen.text("bch: " .. bch)
     screen.move(75,20)
-    screen.text("len: " .. seq_len)
+    screen.text("len: " .. params:get("seqlen"))
     screen.move(75,30)
-    screen.text("range: " .. range)
+    screen.text("range: " .. params:get("range"))
   elseif page == 2 then
     if alt == false then screen.level(15) else screen.level(1) end
 
     screen.move(10,10)
-    screen.text("bch: " .. bch)
+    screen.text("bch: " .. params:get("bch"))
     screen.move(10,20)
-    screen.text("muts: " .. num_mut)
+    screen.text("muts: " .. params:get("muts"))
     screen.move(10,30)
-    screen.text("bchs: " .. num_bch)
+    screen.text("bchs: " .. params:get("bchs"))
 
     if alt == true then screen.level(15) else screen.level(1) end
 
     screen.move(75,10)
-    screen.text("loops: " .. loops_per_bch)
+    screen.text("loops: " .. params:get("loops"))
     screen.move(75,20)
-    screen.text("walk: " .. tostring(should_walk))
+    screen.text("walk: " .. tostring(params:get("walk")))
     screen.move(75,30)
-    screen.text("tempo: " .. tempo)
+    screen.text("tempo: " .. params:get("div"))
   end
 
   screen.line_width(1)
 
   y = 50
-  seq = seqs[bch]
+  seq = seqs[params:get("bch")]
   for i = 1,#seq do
     if i > 1 then
       y = y - (seq[i] - seq[i-1])
