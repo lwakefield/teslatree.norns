@@ -18,7 +18,6 @@ local Tree      = include "lib/tree"
 
 local alt = false
 local seqs = {}
-local should_walk = true
 local seq_walk
 local loop_num = 1
 local seq_pos = 0
@@ -72,8 +71,18 @@ local function gen_seqs()
     end
   end)
 
-  seq_walk = Tree.walker(#seqs)
-  params:set("bch", seq_walk())
+  if seq_walk then
+    last_idx = params:get("bch")
+    next_idx = seq_walk()
+    if next_idx <= #seqs then
+      next_idx = Tree.parent(#seqs)
+      last_idx = #seqs
+    end
+    seq_walk = Tree.walker(#seqs, next_idx, last_idx)
+  else
+    seq_walk = Tree.walker(#seqs)
+    params:set("bch", seq_walk())
+  end
 end
 
 function init()

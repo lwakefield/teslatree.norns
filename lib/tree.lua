@@ -32,9 +32,9 @@ end
 --        1
 --    2       3
 --  4   5   6   7
-function Tree.walker(size)
-  next_idx = 1
-  last_idx = nil
+function Tree.walker(size, next_idx, last_idx)
+  next_idx = next_idx or 1
+  last_idx = last_idx or nil
   return function ()
     curr_idx = next_idx
     if size == 1 then return 1 end
