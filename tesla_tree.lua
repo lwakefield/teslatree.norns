@@ -15,6 +15,7 @@ unrequire("musicutil")
 local MusicUtil = require "musicutil"
 local TabUtil   = require "tabutil"
 local Tree      = include "lib/tree"
+local Halfscnd  = include "awake/lib/halfsecond"
 
 local alt = false
 local seqs = {}
@@ -89,6 +90,8 @@ function init()
   engine.amp(1.0)
   engine.cutoff(500)
   engine.release(0.5)
+
+  Halfscnd.init()
 
   params:add{
     type="number", id="scale", name="scale",
@@ -205,7 +208,6 @@ end
 
 function redraw()
   screen.clear()
-  -- screen.level(15)
 
   if page == 1 then
     if alt == false then screen.level(15) else screen.level(1) end
