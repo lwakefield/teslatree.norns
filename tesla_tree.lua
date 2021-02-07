@@ -88,8 +88,6 @@ end
 
 function init()
   engine.amp(1.0)
-  engine.cutoff(500)
-  engine.release(0.5)
 
   Halfscnd.init()
 
@@ -156,6 +154,24 @@ function init()
     type="number", id="div", name="div",
     min=1, max=128, default=4
   }
+
+  cs_CUT = controlspec.new(50,5000,'exp',0,500,'hz')
+  params:add{
+    type="control", id="cutoff", controlspec=cs_CUT,
+    action=function()
+      engine.cutoff(params:get("cutoff"))
+    end
+  }
+  cs_REL = controlspec.new(0.1,10,'lin',0,5,'s')
+  params:add{
+    type="control", id="release", controlspec=cs_REL,
+    action=function()
+      engine.release(params:get("release"))
+    end
+  }
+
+  engine.cutoff(params:get("cutoff"))
+  engine.release(params:get("release"))
 
   gen_seqs()
   clock.run(loop)
